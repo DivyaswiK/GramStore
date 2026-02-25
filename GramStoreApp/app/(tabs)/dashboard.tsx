@@ -7,6 +7,8 @@ import {
   ScrollView,
 } from "react-native";
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
 type Product = {
   _id?: string;
   name: string;
@@ -15,46 +17,94 @@ type Product = {
   expiryDate: string;
 };
 
-const API_URL = "http://localhost:5000/products";
-
 export default function Dashboard() {
 
   const [products, setProducts] = useState<Product[]>([]);
 
   const fetchProducts = async () => {
-    const res = await fetch(API_URL);
-    const data = await res.json();
-    setProducts(data);
+
+    try {
+
+      const userId = await AsyncStorage.getItem("userId");
+
+      if (!userId) return;
+
+      const res = await fetch(
+        `http://localhost:5000/products/${userId}`
+      );
+
+      const data = await res.json();
+
+      setProducts(data);
+
+    } catch (error) {
+
+      console.log(error);
+
+    }
+
   };
 
   useEffect(() => {
+
     fetchProducts();
+
   }, []);
 
+  // LOW STOCK
   const lowStock = products.filter(
     p => p.stock <= p.minStock
   );
 
+  // EXPIRING SOON
   const expiringSoon = products.filter(p => {
 
+    if (!p.expiryDate) return false;
+
     const expiry = new Date(p.expiryDate);
+
     const today = new Date();
 
     const diff =
       (expiry.getTime() - today.getTime()) /
-      (1000 * 3600 * 24);
+      (1000 * 60 * 60 * 24);
 
-    return diff <= 30;
+    return diff <= 10 && diff >= 0;
 
   });
 
+  // EXPIRED
+  const expiredProducts = products.filter(p => {
+
+    if (!p.expiryDate) return false;
+
+    return new Date(p.expiryDate) < new Date();
+
+  });
+
+  // HEALTHY
+  const healthyProducts = products.filter(
+    p => p.stock > p.minStock
+  );
+
+  // TOTAL QUANTITY
+  const totalQuantity = products.reduce(
+    (sum, p) => sum + p.stock,
+    0
+  );
+
   const renderLowStock = ({ item }: any) => (
+
     <View style={styles.alertItem}>
+
       <Text>{item.name}</Text>
+
       <Text style={styles.alertText}>
         {item.stock} left
       </Text>
+
     </View>
+
   );
 
   return (
@@ -70,6 +120,7 @@ export default function Dashboard() {
       </Text>
 
       {/* STATS */}
+
       <View style={styles.statsRow}>
 
         <View style={styles.statBox}>
@@ -80,14 +131,14 @@ export default function Dashboard() {
         </View>
 
         <View style={styles.statBox}>
-          <Text style={styles.statNumber}>
+          <Text style={[styles.statNumber,{color:"red"}]}>
             {lowStock.length}
           </Text>
           <Text>Low Stock</Text>
         </View>
 
         <View style={styles.statBox}>
-          <Text style={styles.statNumber}>
+          <Text style={[styles.statNumber,{color:"orange"}]}>
             {expiringSoon.length}
           </Text>
           <Text>Expiring Soon</Text>
@@ -95,7 +146,34 @@ export default function Dashboard() {
 
       </View>
 
-      {/* LOW STOCK ALERT */}
+      {/* PRODUCT ANALYTICS */}
+
+      <View style={styles.section}>
+
+        <Text style={styles.sectionTitle}>
+          Product Analytics
+        </Text>
+
+        <Text style={styles.analytics}>
+          Total Quantity: {totalQuantity}
+        </Text>
+
+        <Text style={styles.analytics}>
+          Healthy Products: {healthyProducts.length}
+        </Text>
+
+        <Text style={styles.analytics}>
+          Expiring Soon: {expiringSoon.length}
+        </Text>
+
+        <Text style={styles.analytics}>
+          Expired Products: {expiredProducts.length}
+        </Text>
+
+      </View>
+
+      {/* LOW STOCK */}
+
       <View style={styles.section}>
 
         <Text style={styles.sectionTitle}>
@@ -105,26 +183,20 @@ export default function Dashboard() {
         <FlatList
           data={lowStock}
           renderItem={renderLowStock}
-          keyExtractor={(item) => item._id || ""}
+          keyExtractor={(item,index)=>index.toString()}
+          ListEmptyComponent={
+            <Text style={styles.empty}>
+              No low stock items
+            </Text>
+          }
         />
-
-      </View>
-
-      {/* BEST SELLING PLACEHOLDER */}
-      <View style={styles.section}>
-
-        <Text style={styles.sectionTitle}>
-          Best Selling Products
-        </Text>
-
-        <Text>Rice (5kg) - 45 sold</Text>
-        <Text>Cooking Oil - 32 sold</Text>
 
       </View>
 
     </ScrollView>
 
   );
+
 }
 
 const styles = StyleSheet.create({
@@ -178,14 +250,26 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
 
+  analytics: {
+    marginTop: 5,
+    fontSize: 15,
+  },
+
   alertItem: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: 5,
+    paddingVertical: 6,
   },
 
   alertText: {
     color: "red",
+    fontWeight: "bold",
+  },
+
+  empty: {
+    color: "gray",
+    textAlign: "center",
+    marginTop: 5,
   },
 
 });

@@ -8,10 +8,14 @@ import {
   Modal,
   TextInput,
   ScrollView,
+  Alert,
 } from "react-native";
+
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 type GroupOrder = {
   _id?: string;
+  userId?: string;
   orderName: string;
   distributor: string;
   participants: number;
@@ -27,8 +31,9 @@ export default function GroupOrdersScreen() {
 
   const [orders, setOrders] = useState<GroupOrder[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
 
-  const [form, setForm] = useState<any>({
+  const [form, setForm] = useState({
     orderName: "",
     distributor: "",
     participants: "",
@@ -37,44 +42,111 @@ export default function GroupOrdersScreen() {
     deadline: "",
   });
 
-  const fetchOrders = async () => {
+  // Load user and fetch orders
+  const loadUser = async () => {
 
-    const res = await fetch(API_URL);
+    const id = await AsyncStorage.getItem("userId");
 
-    const data = await res.json();
+    if (!id) {
 
-    setOrders(data);
+      Alert.alert("Error", "User not logged in");
+
+      return;
+
+    }
+
+    setUserId(id);
+
+    fetchOrders(id);
+
+  };
+
+  // Fetch user-specific group orders
+  const fetchOrders = async (uid?: string) => {
+
+    try {
+
+      const id = uid || userId;
+
+      if (!id) return;
+
+      const res = await fetch(`${API_URL}/${id}`);
+
+      const data = await res.json();
+
+      setOrders(data);
+
+    } catch {
+
+      Alert.alert("Error", "Failed to fetch group orders");
+
+    }
 
   };
 
   useEffect(() => {
-    fetchOrders();
+
+    loadUser();
+
   }, []);
 
+  // Create group order
   const createOrder = async () => {
 
-    await fetch(API_URL, {
+    try {
 
-      method: "POST",
+      const id = await AsyncStorage.getItem("userId");
 
-      headers: {
-        "Content-Type": "application/json",
-      },
+      if (!id) return;
 
-      body: JSON.stringify({
-        orderName: form.orderName,
-        distributor: form.distributor,
-        participants: Number(form.participants),
-        totalAmount: Number(form.totalAmount),
-        discount: Number(form.discount),
-        deadline: form.deadline,
-      }),
+      await fetch(API_URL, {
 
-    });
+        method: "POST",
 
-    fetchOrders();
+        headers: {
+          "Content-Type": "application/json",
+        },
 
-    setModalVisible(false);
+        body: JSON.stringify({
+
+          userId: id,
+
+          orderName: form.orderName,
+
+          distributor: form.distributor,
+
+          participants: Number(form.participants),
+
+          totalAmount: Number(form.totalAmount),
+
+          discount: Number(form.discount),
+
+          deadline: form.deadline,
+
+        }),
+
+      });
+
+      fetchOrders(id);
+
+      setModalVisible(false);
+
+      setForm({
+        orderName: "",
+        distributor: "",
+        participants: "",
+        totalAmount: "",
+        discount: "",
+        deadline: "",
+      });
+
+      Alert.alert("Success", "Group order created");
+
+    } catch {
+
+      Alert.alert("Error", "Failed to create group order");
+
+    }
 
   };
 
@@ -86,18 +158,28 @@ export default function GroupOrdersScreen() {
         {item.orderName}
       </Text>
 
-      <Text>Distributor: {item.distributor}</Text>
+      <Text>
+        Distributor: {item.distributor}
+      </Text>
 
-      <Text>Participants: {item.participants}</Text>
+      <Text>
+        Participants: {item.participants}
+      </Text>
 
-      <Text>Total Amount: ₹{item.totalAmount}</Text>
+      <Text>
+        Total Amount: ₹{item.totalAmount}
+      </Text>
 
-      <Text>Discount: {item.discount}%</Text>
+      <Text>
+        Discount: {item.discount}%
+      </Text>
 
-      <Text>Deadline: {item.deadline}</Text>
+      <Text>
+        Deadline: {item.deadline}
+      </Text>
 
       <Text style={styles.active}>
-        {item.status}
+        Status: {item.status}
       </Text>
 
     </View>
@@ -111,7 +193,9 @@ export default function GroupOrdersScreen() {
       <FlatList
         data={orders}
         renderItem={renderItem}
-        keyExtractor={(item) => item._id || ""}
+        keyExtractor={(item) =>
+          item._id || Math.random().toString()
+        }
       />
 
       <TouchableOpacity
@@ -129,24 +213,15 @@ export default function GroupOrdersScreen() {
             Create Group Order
           </Text>
 
-          {[
-            "orderName",
-            "distributor",
-            "participants",
-            "totalAmount",
-            "discount",
-            "deadline",
-          ].map(field => (
+          {Object.keys(form).map((field) => (
 
             <TextInput
               key={field}
               placeholder={field}
               style={styles.input}
+              value={(form as any)[field]}
               onChangeText={(text) =>
-                setForm({
-                  ...form,
-                  [field]: text,
-                })
+                setForm({ ...form, [field]: text })
               }
             />
 
@@ -162,9 +237,7 @@ export default function GroupOrdersScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() =>
-              setModalVisible(false)
-            }
+            onPress={() => setModalVisible(false)}
           >
             <Text style={styles.cancel}>
               Cancel
@@ -178,6 +251,7 @@ export default function GroupOrdersScreen() {
     </View>
 
   );
+
 }
 
 const styles = StyleSheet.create({

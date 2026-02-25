@@ -6,10 +6,12 @@ import {
   TouchableOpacity,
   ScrollView,
   Switch,
+  Alert,
 } from "react-native";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { router } from "expo-router";
 
 const API_URL = "http://localhost:5000";
 
@@ -18,12 +20,13 @@ export default function ProfileScreen() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
 
+  // LOAD PROFILE
   const loadProfile = async () => {
 
     try {
 
       const storedName = await AsyncStorage.getItem("userName");
-      console.log(storedName)
+
       if (!storedName) return;
 
       const res = await fetch(`${API_URL}/user/${storedName}`);
@@ -49,6 +52,44 @@ export default function ProfileScreen() {
     loadProfile();
   }, []);
 
+  // LOGOUT FUNCTION
+  const logout = async () => {
+
+  Alert.alert(
+    "Logout",
+    "Are you sure you want to logout?",
+    [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: "Logout",
+        style: "destructive",
+        onPress: async () => {
+
+          try {
+
+            // Clear session
+            await AsyncStorage.clear();
+
+            console.log("Logged out");
+
+            // Reset navigation and go to login
+            router.replace("/login");
+
+          } catch (e) {
+
+            console.log("Logout error:", e);
+
+          }
+
+        },
+      },
+    ]
+  );
+
+};
   const initials = name
     ? name.split(" ").map(n => n[0]).join("").toUpperCase()
     : "";
@@ -56,21 +97,6 @@ export default function ProfileScreen() {
   return (
 
     <ScrollView style={styles.container}>
-
-      {/* HEADER
-      <View style={styles.header}>
-
-        <View style={styles.headerTop}>
-          <Text style={styles.headerTitle}>Profile</Text>
-
-          <MaterialCommunityIcons
-            name="cog-outline"
-            size={24}
-            color="white"
-          />
-        </View>
-
-      </View> */}
 
       {/* PROFILE CARD */}
       <View style={styles.profileCard}>
@@ -97,7 +123,6 @@ export default function ProfileScreen() {
 
       </View>
 
-
       {/* PERSONAL INFO */}
       <View style={styles.section}>
 
@@ -122,7 +147,6 @@ export default function ProfileScreen() {
         </View>
 
       </View>
-
 
       {/* APP SETTINGS */}
       <View style={styles.section}>
@@ -151,36 +175,39 @@ export default function ProfileScreen() {
 
       </View>
 
+      {/* LOGOUT BUTTON */}
+      <View style={styles.section}>
+
+        <TouchableOpacity
+          style={styles.logoutBtn}
+          onPress={logout}
+        >
+
+          <MaterialCommunityIcons
+            name="logout"
+            size={22}
+            color="white"
+          />
+
+          <Text style={styles.logoutText}>
+            Logout
+          </Text>
+
+        </TouchableOpacity>
+
+      </View>
+
     </ScrollView>
 
   );
-}
 
+}
 
 const styles = StyleSheet.create({
 
   container: {
     flex: 1,
     backgroundColor: "#f5f5f5",
-  },
-
-  header: {
-    backgroundColor: "#2e7d32",
-    paddingTop: 50,
-    paddingBottom: 15,
-    paddingHorizontal: 15,
-  },
-
-  headerTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-
-  headerTitle: {
-    color: "white",
-    fontSize: 20,
-    fontWeight: "bold",
   },
 
   profileCard: {
@@ -271,6 +298,34 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 10,
     fontSize: 15,
+  },
+
+  logoutBtn: {
+
+    backgroundColor: "#d32f2f",
+
+    padding: 15,
+
+    borderRadius: 10,
+
+    flexDirection: "row",
+
+    justifyContent: "center",
+
+    alignItems: "center",
+
+  },
+
+  logoutText: {
+
+    color: "white",
+
+    fontSize: 16,
+
+    marginLeft: 10,
+
+    fontWeight: "bold",
+
   },
 
 });

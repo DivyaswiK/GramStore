@@ -8,14 +8,26 @@ import {
   Modal,
   TextInput,
   ScrollView,
+  Alert,
 } from "react-native";
+
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+type OrderStatus =
+  | "Pending"
+  | "Approved"
+  | "Shipped"
+  | "Delivered"
+  | "Cancelled";
 
 type Order = {
   _id?: string;
+  userId?: string;
   productName: string;
   quantity: number;
   distributor: string;
-  status: string;
+  status: OrderStatus;
+  date?: string;
 };
 
 const API_URL = "http://localhost:5000/orders";
@@ -25,50 +37,136 @@ export default function OrdersScreen() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
 
-  const [form, setForm] = useState<any>({
+  const [userId, setUserId] = useState<string | null>(null);
+
+  const [form, setForm] = useState({
     productName: "",
     quantity: "",
     distributor: "",
   });
 
-  const fetchOrders = async () => {
+  // LOAD USER AND FETCH ORDERS
+  const loadUserAndOrders = async () => {
 
-    const res = await fetch(API_URL);
+    try {
 
-    const data = await res.json();
+      const id = await AsyncStorage.getItem("userId");
 
-    setOrders(data);
+      if (!id) {
+
+        Alert.alert("Error", "User not logged in");
+
+        return;
+
+      }
+
+      setUserId(id);
+
+      fetchOrders(id);
+
+    } catch {
+
+      Alert.alert("Error", "Failed to load user");
+
+    }
+
+  };
+
+  // FETCH USER-SPECIFIC ORDERS
+  const fetchOrders = async (uid?: string) => {
+
+    try {
+
+      const id = uid || userId;
+
+      if (!id) return;
+
+      const res = await fetch(`${API_URL}/${id}`);
+
+      const data = await res.json();
+
+      setOrders(data);
+
+    } catch (error) {
+
+      console.log("Fetch Orders Error:", error);
+
+      Alert.alert("Error", "Failed to fetch orders");
+
+    }
 
   };
 
   useEffect(() => {
-    fetchOrders();
+
+    loadUserAndOrders();
+
   }, []);
 
+  // ADD ORDER
   const addOrder = async () => {
 
-    await fetch(API_URL, {
+    try {
 
-      method: "POST",
+      if (!form.productName || !form.quantity || !form.distributor) {
 
-      headers: {
-        "Content-Type": "application/json",
-      },
+        Alert.alert("Error", "Fill all fields");
 
-      body: JSON.stringify({
-        productName: form.productName,
-        quantity: Number(form.quantity),
-        distributor: form.distributor,
-      }),
+        return;
 
-    });
+      }
 
-    fetchOrders();
+      const id = await AsyncStorage.getItem("userId");
 
-    setModalVisible(false);
+      if (!id) return;
+
+      await fetch(API_URL, {
+
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json",
+        },
+
+        body: JSON.stringify({
+
+          userId: id,
+
+          productName: form.productName,
+
+          quantity: Number(form.quantity),
+
+          distributor: form.distributor,
+
+        }),
+
+      });
+
+      // refresh orders
+      fetchOrders(id);
+
+      // reset form
+      setForm({
+        productName: "",
+        quantity: "",
+        distributor: "",
+      });
+
+      setModalVisible(false);
+
+      Alert.alert("Success", "Order placed");
+
+    } catch (error) {
+
+      console.log("Add Order Error:", error);
+
+      Alert.alert("Error", "Failed to place order");
+
+    }
 
   };
 
+  // RENDER ORDER
   const renderItem = ({ item }: { item: Order }) => (
 
     <View style={styles.card}>
@@ -77,17 +175,34 @@ export default function OrdersScreen() {
         {item.productName}
       </Text>
 
-      <Text>Quantity: {item.quantity}</Text>
-
-      <Text>Distributor: {item.distributor}</Text>
-
-      <Text style={
-        item.status === "Pending"
-          ? styles.pending
-          : styles.delivered
-      }>
-        {item.status}
+      <Text style={styles.text}>
+        Quantity: {item.quantity}
       </Text>
+
+      <Text style={styles.text}>
+        Distributor: {item.distributor}
+      </Text>
+
+      <Text
+        style={[
+          styles.status,
+          item.status === "Pending" && styles.pending,
+          item.status === "Approved" && styles.approved,
+          item.status === "Shipped" && styles.shipped,
+          item.status === "Delivered" && styles.delivered,
+          item.status === "Cancelled" && styles.cancelled,
+        ]}
+      >
+        Status: {item.status}
+      </Text>
+
+      {item.date && (
+
+        <Text style={styles.date}>
+          {new Date(item.date).toDateString()}
+        </Text>
+
+      )}
 
     </View>
 
@@ -100,9 +215,17 @@ export default function OrdersScreen() {
       <FlatList
         data={orders}
         renderItem={renderItem}
-        keyExtractor={(item) => item._id || ""}
+        keyExtractor={(item) =>
+          item._id || Math.random().toString()
+        }
+        ListEmptyComponent={
+          <Text style={styles.empty}>
+            No orders found
+          </Text>
+        }
       />
 
+      {/* FLOAT BUTTON */}
       <TouchableOpacity
         style={styles.fab}
         onPress={() => setModalVisible(true)}
@@ -110,6 +233,7 @@ export default function OrdersScreen() {
         <Text style={styles.fabText}>+</Text>
       </TouchableOpacity>
 
+      {/* MODAL */}
       <Modal visible={modalVisible} animationType="slide">
 
         <ScrollView style={styles.modal}>
@@ -118,22 +242,33 @@ export default function OrdersScreen() {
             Place Order
           </Text>
 
-          {["productName", "quantity", "distributor"]
-            .map(field => (
+          <TextInput
+            placeholder="Product Name"
+            style={styles.input}
+            value={form.productName}
+            onChangeText={(text) =>
+              setForm({ ...form, productName: text })
+            }
+          />
 
-              <TextInput
-                key={field}
-                placeholder={field}
-                style={styles.input}
-                onChangeText={(text) =>
-                  setForm({
-                    ...form,
-                    [field]: text,
-                  })
-                }
-              />
+          <TextInput
+            placeholder="Quantity"
+            style={styles.input}
+            keyboardType="numeric"
+            value={form.quantity}
+            onChangeText={(text) =>
+              setForm({ ...form, quantity: text })
+            }
+          />
 
-          ))}
+          <TextInput
+            placeholder="Distributor"
+            style={styles.input}
+            value={form.distributor}
+            onChangeText={(text) =>
+              setForm({ ...form, distributor: text })
+            }
+          />
 
           <TouchableOpacity
             style={styles.saveBtn}
@@ -145,9 +280,7 @@ export default function OrdersScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() =>
-              setModalVisible(false)
-            }
+            onPress={() => setModalVisible(false)}
           >
             <Text style={styles.cancel}>
               Cancel
@@ -161,21 +294,23 @@ export default function OrdersScreen() {
     </View>
 
   );
+
 }
 
 const styles = StyleSheet.create({
 
   container: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#f4f6f8",
     padding: 12,
   },
 
   card: {
-    backgroundColor: "white",
+    backgroundColor: "#fff",
     padding: 15,
     borderRadius: 12,
-    marginBottom: 10,
+    marginBottom: 12,
+    elevation: 3,
   },
 
   name: {
@@ -183,20 +318,44 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
 
+  text: {
+    fontSize: 14,
+  },
+
+  status: {
+    marginTop: 5,
+    fontWeight: "bold",
+  },
+
   pending: {
     color: "orange",
-    marginTop: 5,
+  },
+
+  approved: {
+    color: "blue",
+  },
+
+  shipped: {
+    color: "purple",
   },
 
   delivered: {
     color: "green",
+  },
+
+  cancelled: {
+    color: "red",
+  },
+
+  date: {
+    color: "gray",
     marginTop: 5,
   },
 
   fab: {
     position: "absolute",
-    bottom: 20,
-    right: 20,
+    bottom: 25,
+    right: 25,
     backgroundColor: "#2e7d32",
     width: 60,
     height: 60,
@@ -206,7 +365,7 @@ const styles = StyleSheet.create({
   },
 
   fabText: {
-    color: "white",
+    color: "#fff",
     fontSize: 30,
   },
 
@@ -215,7 +374,7 @@ const styles = StyleSheet.create({
   },
 
   title: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "bold",
     marginBottom: 20,
   },
@@ -224,7 +383,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#eee",
     padding: 12,
     borderRadius: 10,
-    marginBottom: 10,
+    marginBottom: 12,
   },
 
   saveBtn: {
@@ -234,14 +393,20 @@ const styles = StyleSheet.create({
   },
 
   saveText: {
-    color: "white",
+    color: "#fff",
     textAlign: "center",
   },
 
   cancel: {
     textAlign: "center",
-    marginTop: 10,
+    marginTop: 15,
     color: "red",
+  },
+
+  empty: {
+    textAlign: "center",
+    marginTop: 20,
+    color: "gray",
   },
 
 });
